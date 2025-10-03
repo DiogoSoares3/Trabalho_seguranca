@@ -10,10 +10,15 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives import hashes
 import pyotp
 import uvicorn
+from dotenv import load_dotenv
+load_dotenv("./.env.example")
 
+server_key_hex = os.environ.get('SERVER_KEY')
+if not server_key_hex:
+    raise ValueError("A variável de ambiente MY_APP_SERVER_KEY não foi definida!")
 
-# SERVER_KEY=os.urandom(32)
-SERVER_KEY = bytes.fromhex("a7a13d562f73a38827903e1e4a2482312a52a365f134f553334f59048a14187e")
+SERVER_KEY = bytes.fromhex(server_key_hex)
+
 
 class UserRegister(BaseModel):
     username: str
@@ -62,16 +67,10 @@ def register(user: UserRegister):
 
     salt = os.urandom(16)
     kdf = Scrypt(salt=salt, length=32, n=2**14, r=8, p=1)
-    stored_verifier = kdf.derive(auth_token_from_client)
+    verifier = kdf.derive(auth_token_from_client)
     totp_secret = pyotp.random_base32().encode('utf-8')
     file_salt = os.urandom(16)
-    
-    key_for_verifiers = HKDF(
-        algorithm=hashes.SHA256(), 
-        length=32, 
-        salt=None, 
-        info=b'key for verifiers'
-    ).derive(SERVER_KEY)
+
     key_for_totp = HKDF(
         algorithm=hashes.SHA256(), 
         length=32, 
@@ -79,14 +78,12 @@ def register(user: UserRegister):
         info=b'key for totp secrets'
     ).derive(SERVER_KEY)
     
-    nounce_verifier = os.urandom(12)
     nounce_totp = os.urandom(12)
     
-    encrypted_verifier = AESGCM(key_for_verifiers).encrypt(nounce_verifier, stored_verifier, None)
     encrypted_totp = AESGCM(key_for_totp).encrypt(nounce_totp, totp_secret, None)
 
     db[user.username] = {
-        "verifier": base64.b64encode(nounce_verifier + encrypted_verifier).decode('utf-8'),
+        "verifier": base64.b64encode(verifier).decode('utf-8'),
         "salt": base64.b64encode(salt).decode('utf-8'),
         "totp_secret": base64.b64encode(nounce_totp + encrypted_totp).decode('utf-8'),
         "file_salt": base64.b64encode(file_salt).decode('utf-8'),
@@ -107,16 +104,11 @@ def login_factor1(user: UserLoginFactor1):
 
     auth_token_from_client = base64.b64decode(user.auth_token)
     salt = base64.b64decode(user_data['salt'])
-    encrypted_verifier = base64.b64decode(user_data['verifier'])
+    verifier = base64.b64decode(user_data['verifier'])
     kdf = Scrypt(salt=salt, length=32, n=2**14, r=8, p=1)
     
     try:
-        key_for_verifiers = HKDF(algorithm=hashes.SHA256(), length=32, salt=None, info=b'key for verifiers').derive(SERVER_KEY)
-        nonce = encrypted_verifier[:12]
-        ciphertext = encrypted_verifier[12:]
-        decrypted_verifier = AESGCM(key_for_verifiers).decrypt(nonce, ciphertext, None)
-        
-        kdf.verify(auth_token_from_client, decrypted_verifier)
+        kdf.verify(auth_token_from_client, verifier)
         return {"message": "Fator 1 OK. Prossiga para o fator 2."}
     
     except InvalidKey:
