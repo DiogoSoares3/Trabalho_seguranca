@@ -1,6 +1,8 @@
 ## Trabalho Segurança
 
-Antes de executar o codigo, voce deve intalar o gerenciador de pacotes `uv`:
+O trabalho foi desenvolvido em ambiente linux.
+
+Antes de executar o código, você deve intalar o gerenciador de pacotes `uv`:
 
 ```bash
 wget -qO- https://astral.sh/uv/install.sh | sh

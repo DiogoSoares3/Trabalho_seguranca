@@ -74,7 +74,7 @@ def register(user: UserRegister):
     key_for_totp = HKDF(
         algorithm=hashes.SHA256(), 
         length=32, 
-        salt=None, 
+        salt=user.username.encode('utf-8'), 
         info=b'key for totp secrets'
     ).derive(SERVER_KEY)
     
@@ -126,7 +126,7 @@ def login_factor2(user: UserLoginFactor2):
     key_for_totp = HKDF(
         algorithm=hashes.SHA256(), 
         length=32, 
-        salt=None, 
+        salt=user.username.encode('utf-8'),
         info=b'key for totp secrets'
     ).derive(SERVER_KEY)
     
